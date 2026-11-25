@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,5 +63,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+      # Uneori publicarea nu găsește artefactul încărcat cu o secundă înainte („Found 0 artifact(s)”):
+      # o a doua încercare, după 20 de secunde.
       - id: deploy
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.deploy.outcome == 'failure'
+        run: sleep 20
+      - id: deploy2
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
