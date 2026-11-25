@@ -1,0 +1,67 @@
+# Publică ramura `extindere` din thinkINGbig-ro/finventure pe https://mihaimpmo.github.io/finventure-preview/
+# Verifică la fiecare ~5 minute dacă ramura s-a schimbat (GitHub poate întârzia programările) și publică
+# doar atunci. Manual: tab-ul Actions → „Preview extindere” → Run workflow.
+name: Preview extindere
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  SURSA: thinkINGbig-ro/finventure
+  RAMURA: extindere
+  SITE: https://mihaimpmo.github.io/finventure-preview
+
+jobs:
+  verifica:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      nou: ${{ steps.sha.outputs.nou }}
+    steps:
+      - id: sha
+        run: |
+          sha=$(git ls-remote "https://github.com/$SURSA.git" "refs/heads/$RAMURA" | cut -f1)
+          publicat=$(curl -fsS "$SITE/versiune.txt?t=$(date +%s)" 2>/dev/null | tr -d '[:space:]' || true)
+          echo "extindere: $sha, publicat: ${publicat:-nimic}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ -n "$sha" ] && { [ "$sha" != "$publicat" ] || [ "$GITHUB_EVENT_NAME" != "schedule" ]; }; then
+            echo "nou=da" >> "$GITHUB_OUTPUT"
+          fi
+
+  publica:
+    needs: verifica
+    if: needs.verifica.outputs.nou == 'da'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SURSA }}
+          ref: ${{ needs.verifica.outputs.sha }}
+          path: _site
+      - name: Pregătește site-ul
+        run: |
+          rm -rf _site/.git _site/.github
+          echo "${{ needs.verifica.outputs.sha }}" > _site/versiune.txt
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
